@@ -47,8 +47,13 @@ workflow BAM_JOINT_CALLING_GERMLINE_GATK {
     // Convert all sample vcfs into a genomicsdb workspace using genomicsdbimport
     GATK4_GENOMICSDBIMPORT(gendb_input, false, false, false)
 
-    genotype_input = GATK4_GENOMICSDBIMPORT.out.genomicsdb.map{ meta, genomicsdb -> [ meta, genomicsdb, [], [], [] ] }
-
+    // Map input for GenotypeGVCFs conditional on option --allsites;
+    // currently there is a bug in GATK4 which makes it impossible to
+    // use GenomicsDB as input to GenotypeGVCFs
+    genotype_input = GATK4_GENOMICSDBIMPORT.out.genomicsdb.join(
+        GATK4_GENOMICSDBIMPORT.out.intervallist).map{
+            meta, genomicsdb, intervallist -> [ meta, genomicsdb, [], intervallist, [] ]
+    }
     // Joint genotyping performed using GenotypeGVCFs
     // Sort vcfs called by interval within each VCF
 
