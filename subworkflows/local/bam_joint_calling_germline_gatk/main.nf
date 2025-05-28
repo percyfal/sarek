@@ -11,6 +11,7 @@ include { GATK4_GENOMICSDBIMPORT                                 } from '../../.
 include { GATK4_GENOTYPEGVCFS                                    } from '../../../modules/nf-core/gatk4/genotypegvcfs/main'
 include { GATK4_MERGEVCFS           as MERGE_GENOTYPEGVCFS       } from '../../../modules/nf-core/gatk4/mergevcfs/main'
 include { GATK4_MERGEVCFS           as MERGE_VQSR                } from '../../../modules/nf-core/gatk4/mergevcfs/main'
+include { SELECTVARIANTS                                         } from '../../../modules/local/gatk4/selectvariants/main'
 include { GATK4_VARIANTRECALIBRATOR as VARIANTRECALIBRATOR_INDEL } from '../../../modules/nf-core/gatk4/variantrecalibrator/main'
 include { GATK4_VARIANTRECALIBRATOR as VARIANTRECALIBRATOR_SNP   } from '../../../modules/nf-core/gatk4/variantrecalibrator/main'
 
@@ -50,14 +51,30 @@ workflow BAM_JOINT_CALLING_GERMLINE_GATK {
     // Map input for GenotypeGVCFs conditional on option --allsites;
     // currently there is a bug in GATK4 which makes it impossible to
     // use GenomicsDB as input to GenotypeGVCFs
-    genotype_input = GATK4_GENOMICSDBIMPORT.out.genomicsdb.join(
+    select_variants_in = GATK4_GENOMICSDBIMPORT.out.genomicsdb.join(
         GATK4_GENOMICSDBIMPORT.out.intervallist).map{
             meta, genomicsdb, intervallist -> [ meta, genomicsdb, [], intervallist, [] ]
     }
+
+    // Select only the intervals that were used for GenomicsDBImport
+    // and convert to gvcf for joint genotyping if --allsites is set
+    SELECTVARIANTS(select_variants_in, fasta, fai, dict)
+
+    // This step should only be needed if --allsites is set
+    ch_vcf = SELECTVARIANTS.out.gvcf.collect()
+    ch_tbi = SELECTVARIANTS.out.gtbi.collect()
+    ch_intervallist = SELECTVARIANTS.out.intervallist.collect()
+    ch_genotypegvcfs_in = ch_vcf
+        .join(ch_tbi, failOnDuplicate: true, failOnMismatch: true)
+        .join(ch_intervallist, failOnDuplicate: true, failOnMismatch: true)
+        .map{
+            meta, gvcf, gtbi, intervallist -> [ meta, gvcf, gtbi, intervallist, [] ]
+        }
+
     // Joint genotyping performed using GenotypeGVCFs
     // Sort vcfs called by interval within each VCF
+    GATK4_GENOTYPEGVCFS(ch_genotypegvcfs_in, fasta, fai, dict, dbsnp.map{ it -> [ [:], it ] }, dbsnp_tbi.map{ it -> [ [:], it ] })
 
-    GATK4_GENOTYPEGVCFS(genotype_input, fasta, fai, dict, dbsnp.map{ it -> [ [:], it ] }, dbsnp_tbi.map{ it -> [ [:], it ] })
 
     BCFTOOLS_SORT(GATK4_GENOTYPEGVCFS.out.vcf)
     gvcf_to_merge = BCFTOOLS_SORT.out.vcf.map{ meta, vcf -> [ meta.subMap('num_intervals') + [ id:'joint_variant_calling', patient:'all_samples', variantcaller:'haplotypecaller' ], vcf ]}.groupTuple()
