@@ -61,15 +61,10 @@ workflow BAM_JOINT_CALLING_GERMLINE_GATK {
     SELECTVARIANTS(select_variants_in, fasta, fai, dict)
 
     // This step should only be needed if --allsites is set
-    ch_vcf = SELECTVARIANTS.out.gvcf.collect()
-    ch_tbi = SELECTVARIANTS.out.gtbi.collect()
-    ch_intervallist = SELECTVARIANTS.out.intervallist.collect()
-    ch_genotypegvcfs_in = ch_vcf
-        .join(ch_tbi, failOnDuplicate: true, failOnMismatch: true)
-        .join(ch_intervallist, failOnDuplicate: true, failOnMismatch: true)
-        .map{
-            meta, gvcf, gtbi, intervallist -> [ meta, gvcf, gtbi, intervallist, [] ]
-        }
+    ch_genotypegvcfs_in = SELECTVARIANTS.out.gvcf.join(
+        SELECTVARIANTS.out.gtbi, failOnDuplicate: true, failOnMismatch: true)
+        .join(SELECTVARIANTS.out.intervallist, failOnDuplicate: true, failOnMismatch: true)
+        .map{ meta, gvcf, gtbi, intervallist -> [ meta, gvcf, gtbi, intervallist, [] ] }
 
     // Joint genotyping performed using GenotypeGVCFs
     // Sort vcfs called by interval within each VCF
