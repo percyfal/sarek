@@ -4,8 +4,8 @@ process SELECTVARIANTS {
 
     conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'https://community-cr-prod.seqera.io/docker/registry/v2/blobs/sha256/b2/b28daf5d9bb2f0d129dcad1b7410e0dd8a9b087aaf3ec7ced929b1f57624ad98/data':
-        'community.wave.seqera.io/library/gatk4_gcnvkernel:e48d414933d188cd' }"
+        'https://depot.galaxyproject.org/singularity/gatk4:4.5.0.0--py36hdfd78af_0':
+        'biocontainers/gatk4:4.5.0.0--py36hdfd78af_0' }"
 
     input:
     tuple val(meta), path(input), path(vcf_idx), path(intervals), path(intervals_index)
@@ -36,12 +36,14 @@ process SELECTVARIANTS {
         avail_mem = (task.memory.mega*0.8).intValue()
     }
     """
+    # head -n 10 ${intervals} | awk '{printf("%s\\t%i\\t100000\\n", \$1, \$2)}' > foo.bed;
+    cat ${intervals} > intervals.bed;
     gatk --java-options "-Xmx${avail_mem}M -XX:-UsePerfData" \\
         SelectVariants \\
         --variant $input_command \\
         --output ${prefix}.g.vcf.gz \\
         --reference $fasta \\
-        $interval \\
+        --intervals intervals.bed \\
         --tmp-dir . \\
         $args
 
